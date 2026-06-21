@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lacak Lokasi SOS Pro</title>
+  <meta name="theme-color" content="#E63946">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.png">
+  <style>
+    body {font-family:'Segoe UI',Arial; text-align:center; padding:20px; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:white; min-height:100vh; transition:0.3s;}
+    body.dark {background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%); color:#eee;}
+    .box {background:rgba(255,255,255,0.95); color:#333; padding:25px; border-radius:20px; max-width:400px; margin:auto; box-shadow:0 10px 30px rgba(0,0,0,0.3);}
+    input {padding:14px; width:100%; margin:10px 0; border-radius:10px; border:2px solid #ddd; font-size:16px; box-sizing:border-box;}
+    button {padding:16px; width:100%; margin:10px 0; border-radius:12px; border:none; font-size:18px; font-weight:bold; background:#E63946; color:white; cursor:pointer;}
+    button:active {transform:scale(0.97);}
+    button.hijau {background:#25D366;}
+    button.kuning {background:#FFC107; color:#333;}
+    #hasil {margin-top:20px; padding:15px; background:#f0f0f0; border-radius:10px; display:none; color:#333; text-align:left; font-size:14px;}
+    .toggle {display:flex; justify-content:space-between; align-items:center; margin:10px 0; font-size:14px;}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>🚨 SOS DARURAT PRO</h2>
+    
+    <input id="nama" placeholder="DIPZ" required>
+    <input id="nomor" placeholder="6285716604588" required>
+    
+    <div class="toggle">
+      <label>🔊 Bunyi Sirine</label>
+      <input type="checkbox" id="bunyi" checked>
+    </div>
+    <div class="toggle">
+      <label>📳 Getar HP</label>
+      <input type="checkbox" id="getar" checked>
+    </div>
+    <div class="toggle">
+      <label>🌙 Mode Gelap</label>
+      <input type="checkbox" id="dark" onchange="toggleDark()">
+    </div>
+    
+    <button onclick="kirimSOS()">KIRIM LOKASI SEKARANG</button>
+    <button class="hijau" onclick="testMode()">TEST MODE - Coba Dulu</button>
+    <button class="kuning" onclick="resetData()">Hapus Data Tersimpan</button>
+    
+    <div id="hasil"></div>
+  </div>
+
+  <!-- Suara sirine -->
+  <audio id="sirine" loop>
+    <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
+  </audio>
+
+  <script>
+    // Simpan data otomatis
+    window.onload = function() {
+      document.getElementById("nama").value = localStorage.getItem("nama") || "";
+      document.getElementById("nomor").value = localStorage.getItem("nomor") || "";
+      if(localStorage.getItem("dark") == "true") {
+        document.body.classList.add("dark");
+        document.getElementById("dark").checked = true;
+      }
+    }
+    
+    function toggleDark() {
+      document.body.classList.toggle("dark");
+      localStorage.setItem("dark", document.getElementById("dark").checked);
+    }
+    
+    function resetData() {
+      localStorage.clear();
+      document.getElementById("nama").value = "";
+      document.getElementById("nomor").value = "";
+      alert("Data dihapus!");
+    }
+    
+    if('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+
+    async function kirimSOS() {
+      let nama = document.getElementById("nama").value.trim();
+      let nomor = document.getElementById("nomor").value.trim();
+      let hasil = document.getElementById("hasil");
+      let mauBunyi = document.getElementById("bunyi").checked;
+      let mauGetar = document.getElementById("getar").checked;
+      
+      if(!nama || !nomor) {
+        alert("Isi nama + nomor WA dulu ya!");
+        return;
+      }
+      localStorage.setItem("nama", nama);
+      localStorage.setItem("nomor", nomor);
+      
+      // 1. Bunyi sirine
+      if(mauBunyi) document.getElementById("sirine").play();
+      
+      // 2. Getar HP 3x
+      if(mauGetar && navigator.vibrate) navigator.vibrate([300,200,300,200,300]);
+      
+      hasil.style.display = "block";
+      hasil.innerHTML = "📡 Mencari GPS super akurat...";
+      
+      navigator.geolocation.getCurrentPosition(async function(pos) {
+        let lat = pos.coords.latitude;
+        let lon = pos.coords.longitude;
+        let akurasi = Math.round(pos.coords.accuracy);
+        let maps = `https://www.google.com/maps?q=${lat},${lon}`;
+        let waktu = new Date().toLocaleString("id-ID");
+        
+        let bat = "tidak terbaca";
+        if(navigator.getBattery) {
+          let battery = await navigator.getBattery();
+          bat = Math.round(battery.level * 100) + "%";
+        }
+        
+        let pesan = `🚨 SOS DARURAT!\nDari: ${nama}\nWaktu: ${waktu}\nLokasi: ${maps}\nLat: ${lat}\nLon: ${lon}\nAkurasi: ±${akurasi}m\nBaterai: ${bat}`;
+        
+        hasil.innerHTML = `<b>✅ Lokasi ketemu!</b><br><br>${pesan.replace(/\n/g,"<br>")}<br><br><a href='https://wa.me/${nomor}?text=${encodeURIComponent(pesan)}' target='_blank' style='color:#25D366; font-weight:bold; font-size:16px;'>KLIK UNTUK KIRIM KE WA</a>`;
+        
+        // 3. Auto buka WA setelah 2 detik
+        setTimeout(() => {
+          window.open(`https://wa.me/${nomor}?text=${encodeURIComponent(pesan)}`);
+        }, 2000);
+        
+        document.getElementById("sirine").pause();
+        
+      }, function(err) {
+        hasil.innerHTML = "❌ Gagal: " + err.message + "<br>Nyalain GPS + izin lokasi";
+        document.getElementById("sirine").pause();
+      }, {enableHighAccuracy: true, timeout: 15000});
+    }
+    
+    function testMode() {
+      alert("Ini mode test! GPS + bunyi + getar jalan, tapi WA nggak kebuka. Buat latihan aja.");
+      if(document.getElementById("bunyi").checked) document.getElementById("sirine").play();
+      if(document.getElementById("getar").checked && navigator.vibrate) navigator.vibrate([200,100,200]);
+      setTimeout(() => document.getElementById("sirine").pause(), 3000);
+    }
+  </script>
+</body>
+</html>
